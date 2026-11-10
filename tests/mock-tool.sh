@@ -11,7 +11,7 @@ case "$tool" in
                 ;;
             'issue view')
                 if [[ $* == *'--jq'* ]]; then
-                    echo OPEN
+                    echo "${TEST_ISSUE_STATE:-OPEN}"
                 else
                     echo '{"number":123,"title":"Fix behavior","body":"Add regression coverage","url":"https://github.com/test/project/issues/123","state":"OPEN"}'
                 fi
@@ -36,6 +36,7 @@ case "$tool" in
         count=$(cat "$count_file" 2>/dev/null || echo 0)
         count=$((count + 1))
         echo "$count" > "$count_file"
+        if [[ ${TEST_CHECK_FAIL:-0} == 1 ]]; then exit 1; fi
         if [[ $SCENARIO == initial-check-fails && $count == 1 ]]; then exit 1; fi
         if [[ $SCENARIO == review-check-fails && $count == 2 ]]; then exit 1; fi
         if [[ $SCENARIO == formatter && $count == 2 ]]; then echo formatted >> app.txt; fi
@@ -43,6 +44,7 @@ case "$tool" in
         ;;
     opencode)
         [[ $1 == run ]]
+        if [[ -n ${TEST_EXPECT_MODEL:-} ]]; then [[ $* == *"--model $TEST_EXPECT_MODEL"* ]]; fi
         [[ $* != *'--continue'* && $* != *'--session'* && $* != *'--fork'* ]]
         phase=''
         while [[ $# -gt 0 ]]; do
@@ -51,6 +53,11 @@ case "$tool" in
         done
         run_dir=$(find "$XDG_STATE_HOME/operarius" -mindepth 1 -maxdepth 1 -type d)
         echo "$phase" >> "$TEST_DIR/phases"
+        if [[ $SCENARIO == agent-fails ]]; then
+            echo '{"type":"error","message":"Provider unavailable"}'
+            echo 'Provider unavailable' >&2
+            exit 1
+        fi
         case "$phase" in
             implementation)
                 if [[ $SCENARIO == implementation-blocked ]]; then

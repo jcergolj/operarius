@@ -21,6 +21,7 @@ assert_contains() { grep -q -- "$2" "$1" || fail "Missing '$2' in $1"; }
 assert_absent() { if [[ -f $1 ]] && grep -q -- "$2" "$1"; then fail "Unexpected '$2' in $1"; fi; }
 
 setup() {
+    unset TEST_CHECK_FAIL TEST_EXPECT_MODEL TEST_ISSUE_STATE
     export SCENARIO=$1 TEST_DIR="$suite/$1" TEST_DEFAULT=${2:-main}
     export TEST_REMOTE="$TEST_DIR/remote.git" MOCK_LOG="$TEST_DIR/tools.log"
     export XDG_STATE_HOME="$TEST_DIR/state"
@@ -46,6 +47,9 @@ run_success() {
     [[ $(git log -1 --format=%s) == 'Fix issue behavior; close #123' ]] || fail 'Commit suffix'
     [[ -z $(git status --porcelain) ]] || fail 'Expected clean working tree'
     assert_contains "$TEST_DIR/phases" '^retro$'
+    assert_contains "$TEST_DIR/output.log" '\[1/5\] Implementing'
+    assert_contains "$TEST_DIR/output.log" '\[5/5\] Preparing retrospective'
+    assert_absent "$TEST_DIR/output.log" '"sessionID"'
     echo "PASS: $SCENARIO"
 }
 
@@ -77,7 +81,7 @@ for scenario in fixed formatter review-check-fails new-only; do
     if [[ $scenario == fixed || $scenario == formatter ]]; then assert_contains "$TEST_DIR/phases" '^review-2$'; fi
 done
 
-for scenario in implementation-blocked initial-check-fails review-blocked always-fixed false-clean missing-result empty-change agent-commits; do
+for scenario in agent-fails implementation-blocked initial-check-fails review-blocked always-fixed false-clean missing-result empty-change agent-commits; do
     setup "$scenario"
     run_failure ship
     if [[ $scenario != agent-commits ]]; then
@@ -87,6 +91,13 @@ for scenario in implementation-blocked initial-check-fails review-blocked always
         [[ $(grep -c '^review-' "$TEST_DIR/phases") == 3 ]] || fail 'Review limit'
     fi
     if [[ $scenario == initial-check-fails ]]; then assert_absent "$TEST_DIR/phases" '^review-'; fi
+    if [[ $scenario == agent-fails ]]; then
+        assert_contains "$TEST_DIR/output.log" 'Agent failed. Logs:'
+        assert_absent "$TEST_DIR/output.log" 'Provider unavailable'
+        evidence=$(find "$XDG_STATE_HOME/operarius" -mindepth 1 -maxdepth 1 -type d)
+        assert_contains "$evidence/implementation.jsonl" 'Provider unavailable'
+        assert_contains "$evidence/implementation.stderr.log" 'Provider unavailable'
+    fi
 done
 
 setup dirty
@@ -112,6 +123,7 @@ printf '#!/bin/sh\nexit 1\n' > "$TEST_REMOTE/hooks/pre-receive"
 chmod +x "$TEST_REMOTE/hooks/pre-receive"
 run_failure ship
 [[ $(git log -1 --format=%s) == 'Fix issue behavior; close #123' ]] || fail 'Local commit should remain'
+assert_contains "$TEST_DIR/output.log" 'Push attempted; inspect the remote'
 
 setup hook-changes-content
 mkdir "$TEST_DIR/hooks"
@@ -129,6 +141,8 @@ setup retro-fails
 if bash "$script" 123 --mode ship > "$TEST_DIR/output.log" 2>&1; then fail 'Expected retro failure'; fi
 assert_contains "$MOCK_LOG" 'gh issue close'
 assert_contains "$TEST_DIR/output.log" 'Delivery succeeded, but retro failed'
+assert_contains "$TEST_DIR/output.log" 'Stopped during retro. Delivery succeeded.'
+assert_absent "$TEST_DIR/output.log" 'Nothing committed or pushed'
 [[ $(git --git-dir="$TEST_REMOTE" rev-parse refs/heads/main) == "$(git rev-parse HEAD)" ]] || fail 'Delivery lost'
 echo 'PASS: retro failure preserves successful delivery'
 
@@ -143,5 +157,119 @@ printf '2\n' | bash "$script" 123 > "$TEST_DIR/output.log" 2>&1 || fail 'Interac
 assert_contains "$MOCK_LOG" 'gh issue close'
 assert_absent "$MOCK_LOG" 'gh pr create'
 echo 'PASS: interactive ship selection'
+
+setup interactive-default
+printf '\n' | bash "$script" 123 > "$TEST_DIR/output.log" 2>&1 || fail 'Enter should select PR'
+assert_contains "$MOCK_LOG" 'gh pr create'
+issue_line=$(grep -n 'test/project #123: Fix behavior' "$TEST_DIR/output.log" | cut -d: -f1)
+choice_line=$(grep -n '1) Open a PR' "$TEST_DIR/output.log" | cut -d: -f1)
+[[ $issue_line -lt $choice_line ]] || fail 'Issue must appear before delivery choices'
+echo 'PASS: default PR and issue preview'
+
+setup doctor
+bash "$script" doctor > "$TEST_DIR/output.log" 2>&1 || fail 'Doctor should pass'
+assert_contains "$TEST_DIR/output.log" 'Preflight PASS'
+assert_absent "$MOCK_LOG" '^opencode '
+assert_absent "$MOCK_LOG" '^composer '
+assert_absent "$MOCK_LOG" 'gh issue '
+[[ $(git rev-parse HEAD) == "$baseline" && -z $(git status --porcelain) ]] || fail 'Doctor changed project'
+[[ ! -d $XDG_STATE_HOME/operarius ]] || fail 'Doctor created a workflow run'
+echo 'PASS: doctor without AI or workflow side effects'
+
+setup doctor-missing-skill
+export OPERARIUS_SKILLS_DIR="$TEST_DIR/missing-skills"
+if bash "$script" doctor > "$TEST_DIR/output.log" 2>&1; then fail 'Doctor accepted missing skills'; fi
+assert_contains "$TEST_DIR/output.log" 'Missing skill:'
+assert_absent "$MOCK_LOG" '^opencode '
+export OPERARIUS_SKILLS_DIR="$suite/skills"
+echo 'PASS: doctor diagnoses missing skills'
+
+prepare_resume() {
+    setup "$1"
+    export SCENARIO=initial-check-fails
+    if bash "$script" 123 --mode "${2:-ship}" --model test/model > "$TEST_DIR/output.log" 2>&1; then
+        fail 'Expected initial check failure'
+    fi
+    recovery=$(find "$XDG_STATE_HOME/operarius" -mindepth 1 -maxdepth 1 -type d)
+    assert_contains "$TEST_DIR/output.log" 'Nothing committed or pushed'
+    assert_contains "$TEST_DIR/output.log" 'Check log:'
+    assert_contains "$TEST_DIR/output.log" 'operare resume '
+    [[ $(cat "$recovery/stage") == implementation-checks ]] || fail 'Missing resumable checkpoint'
+}
+
+reject_resume() {
+    local checks phases
+    checks=$(cat "$TEST_DIR/check-count")
+    phases=$(wc -l < "$TEST_DIR/phases")
+    if bash "$script" resume "$recovery" > "$TEST_DIR/resume.log" 2>&1; then fail 'Expected resume rejection'; fi
+    [[ $(cat "$TEST_DIR/check-count") == "$checks" ]] || fail 'Rejected resume ran checks'
+    [[ $(wc -l < "$TEST_DIR/phases") == "$phases" ]] || fail 'Rejected resume called AI'
+}
+
+for delivery_mode in ship pr; do
+    prepare_resume "resume-$delivery_mode" "$delivery_mode"
+    export TEST_EXPECT_MODEL=test/model
+    echo 'manual repair' >> app.txt
+    bash "$script" resume "$recovery" > "$TEST_DIR/resume.log" 2>&1 || fail 'Expected recovery success'
+    [[ $(grep -c '^implementation$' "$TEST_DIR/phases") == 1 ]] || fail 'Resume repeated implementation'
+    assert_contains "$TEST_DIR/phases" '^review-1$'
+    assert_contains "$TEST_DIR/phases" '^retro$'
+    [[ -f $recovery/implementation.check.log ]] || fail 'Original failure log lost'
+    [[ $(git log -1 --format=%s) == 'Fix issue behavior; close #123' ]] || fail 'Resume commit subject'
+    [[ $(cat "$recovery/stage") == delivered ]] || fail 'Delivery checkpoint missing'
+    reject_resume
+    echo "PASS: resume $delivery_mode reruns checks/review and preserves model and failure evidence"
+done
+
+prepare_resume resume-checks-fail-again
+export TEST_CHECK_FAIL=1
+if bash "$script" resume "$recovery" > "$TEST_DIR/resume.log" 2>&1; then fail 'Expected repeated check failure'; fi
+assert_contains "$TEST_DIR/resume.log" 'operare resume '
+assert_absent "$TEST_DIR/phases" '^review-'
+[[ $(git rev-parse HEAD) == "$baseline" ]] || fail 'Committed on repeated check failure'
+echo 'PASS: failed recovery remains resumable without delivery'
+
+prepare_resume resume-wrong-project
+mkdir "$TEST_DIR/other"
+git clone -q "$TEST_REMOTE" "$TEST_DIR/other"
+cd "$TEST_DIR/other"
+reject_resume
+assert_contains "$TEST_DIR/resume.log" 'does not match this project'
+echo 'PASS: rejects recovery in another project'
+
+prepare_resume resume-wrong-branch
+git switch -qc unrelated
+reject_resume
+assert_contains "$TEST_DIR/resume.log" 'original branch'
+echo 'PASS: rejects changed branch'
+
+prepare_resume resume-head-changed
+git add --all
+git commit -qm 'Manual commit'
+reject_resume
+assert_contains "$TEST_DIR/resume.log" 'HEAD changed'
+echo 'PASS: rejects changed HEAD'
+
+prepare_resume resume-remote-changed
+git clone -q "$TEST_REMOTE" "$TEST_DIR/other"
+git -C "$TEST_DIR/other" -c user.name=Test -c user.email=test@example.test commit --allow-empty -qm 'Concurrent update'
+git -C "$TEST_DIR/other" push -q origin main
+reject_resume
+assert_contains "$TEST_DIR/resume.log" 'Remote default branch changed'
+echo 'PASS: rejects changed remote baseline'
+
+prepare_resume resume-wrong-origin
+git init --bare -q --initial-branch=main "$TEST_DIR/other.git"
+git remote set-url origin "$TEST_DIR/other.git"
+git push -q origin main
+reject_resume
+assert_contains "$TEST_DIR/resume.log" 'does not match this project'
+echo 'PASS: rejects changed origin'
+
+prepare_resume resume-closed-issue
+export TEST_ISSUE_STATE=CLOSED
+reject_resume
+assert_contains "$TEST_DIR/resume.log" 'Issue is no longer open'
+echo 'PASS: rejects closed issue'
 
 echo 'All workflow tests passed.'

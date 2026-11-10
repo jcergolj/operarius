@@ -35,7 +35,7 @@ From your Laravel project, start on its clean, up-to-date default branch:
 operare 123
 ```
 
-Choose **open a PR** or **ship directly**. Direct shipping commits and pushes to the default branch without another confirmation.
+The script shows the issue title, repository, and target branch before asking you to choose **open a PR** (Enter selects this) or **ship directly**. Direct shipping commits and pushes to the default branch without another confirmation.
 
 The script:
 
@@ -53,6 +53,28 @@ operare 123 --mode pr
 operare 123 --mode ship
 operare 123 --model provider/model
 ```
+
+### Check your setup
+
+```bash
+operare doctor
+```
+
+Checks dependencies, GitHub repository access, installed skills, Laravel/checks configuration, and clean, up-to-date default-branch readiness. It fetches the default branch but does not run AI, Composer checks, or delivery. Fix the first reported problem and rerun it. This validates configuration, not whether your checks pass or your model credentials work.
+
+### Follow a run and recover from failed checks
+
+The terminal shows phase progress, check output, review results, and the delivery outcome. Full AI JSONL output and stderr are saved privately in the run directory rather than streamed to the terminal. Each phase points to its handoff or report; retro suggestions are printed after delivery.
+
+If initial implementation checks fail, fix the code in the same working tree, then run the recovery command printed by the script:
+
+```bash
+operare resume ~/.local/state/operarius/issue-123.ABCDEF
+```
+
+Run this from the original project, on the original branch, leaving your fixes uncommitted. Resume preserves the original issue specification, delivery mode, model override, and failure log. It reruns checks and fresh reviews before committing or delivering; it does not repeat implementation. If checks fail again, you can fix and resume again.
+
+Recovery stops if the project, origin, default branch, working branch, HEAD, or remote baseline has changed, or the issue is closed. Only failed initial implementation checks are resumable—not blocked implementation, review failures, or partial delivery. Inspect those runs manually; don't blindly rerun a push or PR creation. Older runs without a recovery checkpoint cannot be resumed.
 
 ## Before you run it
 
