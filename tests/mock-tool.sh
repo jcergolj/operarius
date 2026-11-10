@@ -4,6 +4,10 @@ set -euo pipefail
 tool=$(basename "$0")
 echo "$tool $*" >> "$MOCK_LOG"
 case "$tool" in
+    xdg-terminal-exec)
+        [[ $1 == opencode && $2 == --session && $4 == "$TEST_DIR/project" ]]
+        if [[ $SCENARIO == watch-launch-fails ]]; then exit 1; fi
+        ;;
     gh)
         case "$1 $2" in
             'repo view')

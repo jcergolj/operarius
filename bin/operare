@@ -4,14 +4,16 @@ set -euo pipefail
 
 usage() {
     cat <<'EOF'
-Usage: operare ISSUE [--model PROVIDER/MODEL] [--mode pr|ship]
+Usage: operare ISSUE [--model PROVIDER/MODEL] [--mode pr|ship] [--no-watch]
        operare doctor
-       operare resume RUN_DIRECTORY
+       operare resume RUN_DIRECTORY [--no-watch]
 
 Shows the issue, then asks whether to open a PR (default) or ship directly
 (commit and push to the default branch). Use --mode to skip the prompt.
 Doctor checks setup without AI calls. Resume retries failed implementation
 checks, then runs fresh reviews; run it from the original project.
+On a graphical desktop, opens each AI session in a new terminal using
+xdg-terminal-exec. Use --no-watch to keep the workflow terminal-only.
 
 Run from a trusted Laravel GitHub repository, on its clean, up-to-date default
 branch. Requires opencode (V2), gh (authenticated), git, jq, composer, sha256sum.
@@ -36,6 +38,7 @@ if [[ ${1:-} == --help ]]; then usage; exit 0; fi
 command=run
 mode=''
 model_args=()
+watch=true
 run_dir=''
 case "${1:-}" in
     doctor)
@@ -45,7 +48,7 @@ case "${1:-}" in
         ;;
     resume)
         command=resume
-        [[ $# == 2 && -d $2 ]] || die 'Usage: operare resume RUN_DIRECTORY'
+        [[ $# -ge 2 && -d $2 ]] || die 'Usage: operare resume RUN_DIRECTORY [--no-watch]'
         run_dir=$(cd "$2" && pwd)
         shift 2
         ;;
@@ -57,6 +60,10 @@ case "${1:-}" in
 esac
 while [[ $# -gt 0 ]]; do
     case "$1" in
+        --no-watch)
+            watch=false
+            shift
+            ;;
         --model)
             [[ -n ${2:-} ]] || die '--model requires a value.'
             model_args=(--model "$2")
@@ -141,6 +148,12 @@ stopped() {
 }
 trap stopped EXIT
 echo "Run evidence: $run_dir"
+if [[ $watch == true ]]; then
+    if [[ -z ${DISPLAY:-}${WAYLAND_DISPLAY:-} ]] || ! command -v xdg-terminal-exec >/dev/null; then
+        echo 'Live watch unavailable (requires a graphical desktop and xdg-terminal-exec); continuing with logs.' >&2
+        watch=false
+    fi
+fi
 if [[ $command == resume ]]; then
     [[ $(gh issue view "$issue" --repo "$repo" --json state --jq .state) == OPEN ]] || die 'Issue is no longer open.'
 else
@@ -195,12 +208,32 @@ fingerprint() {
     } | sha256sum
 }
 
+watch_output() {
+    local phase=$1 line session opened=false
+    while IFS= read -r line || [[ -n $line ]]; do
+        printf '%s\n' "$line" >> "$run_dir/$phase.jsonl"
+        if [[ $watch == true && $opened == false ]]; then
+            session=$(jq -r 'select(.sessionID | type == "string") | .sessionID' <<<"$line" 2>/dev/null) || session=''
+            if [[ -n $session ]]; then
+                opened=true
+                printf 'Watching %s in OpenCode (session %s).\n' "$phase" "$session"
+                (
+                    xdg-terminal-exec opencode --session "$session" "$root" \
+                        > "$run_dir/$phase.watch.log" 2>&1 ||
+                        echo "Could not open OpenCode watch window. See $run_dir/$phase.watch.log" >&2
+                ) < /dev/null &
+            fi
+        fi
+    done
+}
+
 run_agent() {
     local phase=$1 prompt=$2
     printf '%s\n' "$prompt" > "$run_dir/$phase.prompt.txt"
+    : > "$run_dir/$phase.jsonl"
     # No --continue/--session: each invocation creates an independent session.
     opencode run --agent build --auto --format json "${model_args[@]}" \
-        --title "Issue #$issue: $phase" "$prompt" > "$run_dir/$phase.jsonl" 2> "$run_dir/$phase.stderr.log" || {
+        --title "Issue #$issue: $phase" "$prompt" 2> "$run_dir/$phase.stderr.log" | watch_output "$phase" || {
             echo "Agent failed. Logs: $run_dir/$phase.jsonl and $run_dir/$phase.stderr.log" >&2
             return 1
         }

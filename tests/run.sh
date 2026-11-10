@@ -6,7 +6,7 @@ script="$tests/../bin/operare"
 suite=$(mktemp -d "${TMPDIR:-/tmp}/operarius-tests.XXXXXX")
 echo "Test evidence: $suite"
 mkdir "$suite/bin"
-for tool in gh opencode composer; do ln -s "$tests/mock-tool.sh" "$suite/bin/$tool"; done
+for tool in gh opencode composer xdg-terminal-exec; do ln -s "$tests/mock-tool.sh" "$suite/bin/$tool"; done
 export PATH="$suite/bin:$PATH"
 export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_TERMINAL_PROMPT=0
 unset GH_REPO GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE
@@ -21,6 +21,7 @@ assert_contains() { grep -q -- "$2" "$1" || fail "Missing '$2' in $1"; }
 assert_absent() { if [[ -f $1 ]] && grep -q -- "$2" "$1"; then fail "Unexpected '$2' in $1"; fi; }
 
 setup() {
+    unset DISPLAY WAYLAND_DISPLAY
     unset TEST_CHECK_FAIL TEST_EXPECT_MODEL TEST_ISSUE_STATE
     export SCENARIO=$1 TEST_DIR="$suite/$1" TEST_DEFAULT=${2:-main}
     export TEST_REMOTE="$TEST_DIR/remote.git" MOCK_LOG="$TEST_DIR/tools.log"
@@ -66,6 +67,30 @@ setup ship master
 run_success ship
 assert_contains "$MOCK_LOG" 'gh issue close'
 assert_absent "$MOCK_LOG" 'gh pr create'
+
+setup watch
+export WAYLAND_DISPLAY=wayland-test
+run_success ship
+assert_contains "$MOCK_LOG" 'xdg-terminal-exec opencode --session test-implementation '
+assert_contains "$MOCK_LOG" 'xdg-terminal-exec opencode --session test-review-1 '
+assert_contains "$TEST_DIR/output.log" 'Watching implementation in OpenCode'
+
+setup no-watch
+export WAYLAND_DISPLAY=wayland-test
+bash "$script" 123 --mode ship --no-watch > "$TEST_DIR/output.log" 2>&1 || fail 'No-watch should succeed'
+assert_absent "$MOCK_LOG" '^xdg-terminal-exec '
+assert_absent "$TEST_DIR/output.log" 'Watching '
+echo 'PASS: --no-watch disables desktop windows'
+
+setup watch-launch-fails
+export WAYLAND_DISPLAY=wayland-test
+run_success ship
+assert_contains "$MOCK_LOG" '^gh issue close'
+
+setup headless
+run_success ship
+assert_absent "$MOCK_LOG" '^xdg-terminal-exec '
+assert_contains "$TEST_DIR/output.log" 'Live watch unavailable'
 
 setup pr
 run_success pr

@@ -52,6 +52,7 @@ You can also choose explicitly or override the configured model:
 operare 123 --mode pr
 operare 123 --mode ship
 operare 123 --model provider/model
+operare 123 --no-watch
 ```
 
 ### Check your setup
@@ -64,7 +65,9 @@ Checks dependencies, GitHub repository access, installed skills, Laravel/checks 
 
 ### Follow a run and recover from failed checks
 
-The terminal shows phase progress, check output, review results, and the delivery outcome. Full AI JSONL output and stderr are saved privately in the run directory rather than streamed to the terminal. Each phase points to its handoff or report; retro suggestions are printed after delivery.
+On a graphical desktop, each AI phase automatically opens a new terminal attached to its OpenCode session, so you can watch it work. This requires `xdg-terminal-exec` and OpenCode's shared background service. Windows remain available for inspection; close them when finished. Avoid sending prompts while the workflow is running. Use `--no-watch` to disable this (also supported by `operare resume RUN_DIRECTORY --no-watch`). Without a graphical desktop or terminal launcher, the workflow continues with logs only.
+
+The original terminal shows phase progress, check output, review results, and the delivery outcome. Full AI JSONL output and stderr are saved privately in the run directory rather than streamed to the terminal. Each phase points to its handoff or report; retro suggestions are printed after delivery. Terminal-launcher output is saved in each phase's `.watch.log`.
 
 If initial implementation checks fail, fix the code in the same working tree, then run the recovery command printed by the script:
 
