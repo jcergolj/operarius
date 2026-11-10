@@ -171,7 +171,7 @@ else
     fi
     branch=$default
     if [[ $mode == pr ]]; then
-        branch="fix/issue-$issue-$(basename "$run_dir" | cut -d. -f2)"
+        branch="fix/issue-$issue"
         git switch -c "$branch"
     fi
 

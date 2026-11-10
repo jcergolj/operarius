@@ -96,7 +96,7 @@ setup pr
 run_success pr
 assert_contains "$MOCK_LOG" 'gh pr create'
 assert_absent "$MOCK_LOG" 'gh issue close'
-[[ $(git branch --show-current) == fix/issue-123-* ]] || fail 'PR branch not created'
+[[ $(git branch --show-current) == fix/issue-123 ]] || fail 'PR branch must not have a random suffix'
 [[ $(git --git-dir="$TEST_REMOTE" rev-parse refs/heads/main) == "$baseline" ]] || fail 'PR changed default branch'
 
 for scenario in fixed formatter review-check-fails new-only; do

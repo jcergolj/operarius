@@ -37,6 +37,8 @@ operare 123
 
 The script shows the issue title, repository, and target branch before asking you to choose **open a PR** (Enter selects this) or **ship directly**. Direct shipping commits and pushes to the default branch without another confirmation.
 
+PR branches use `fix/issue-123`, without random suffixes.
+
 The script:
 
 1. Implements the issue and relevant regression tests.
