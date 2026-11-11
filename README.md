@@ -2,23 +2,7 @@
 
 Take a GitHub issue from implementation to PR with OpenCode. Supports Laravel, Python, C++, Rust, and other projects.
 
-```mermaid
-flowchart TD
-    subgraph Automated
-        A[GitHub issue] --> B[Implement + tests]
-        B --> C[Checks + code review + security]
-        C -->|Fixes needed| D[Apply fixes]
-        D --> C
-        C -->|Clean + passing| E[Commit + push + open PR]
-    end
-    E --> F
-    subgraph Human["Your control"]
-        F[Fresh interactive OpenCode session]
-        F --> G[Request changes + approve updates]
-        G --> H[Ask for /retro when ready]
-        H --> I[Merge PR → issue closes]
-    end
-```
+![An automated worker hands a completed pull request to a developer for human-led review.](docs/workflow.png)
 
 Implementation and each review round start fresh sessions. Standards, spec, and security reviews use separate subagents. Relevant fixes are automatic; delivery requires a clean, unchanged review and passing checks within three rounds.
 
