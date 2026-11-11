@@ -1,0 +1,56 @@
+digraph workflow {
+    graph [
+        rankdir=TB, bgcolor="#ffffff", pad=0.3,
+        nodesep=0.4, ranksep=0.35,
+        fontname="DejaVu Sans", fontsize=18,
+        label="Issue-to-PR workflow", labelloc=t
+    ];
+    node [
+        shape=box, style="rounded,filled", margin="0.2,0.12",
+        fontname="DejaVu Sans", fontsize=12,
+        color="#94a3b8", fillcolor="#f8fafc", fontcolor="#0f172a"
+    ];
+    edge [fontname="DejaVu Sans", fontsize=10, color="#64748b", fontcolor="#475569"];
+
+    subgraph cluster_automated {
+        label="AUTOMATED";
+        fontsize=12;
+        fontcolor="#1d4ed8";
+        color="#bfdbfe";
+        style="rounded,filled";
+        fillcolor="#eff6ff";
+        margin=18;
+
+        issue [label="GitHub issue"];
+        implement [label="Implement + regression tests"];
+        checks [label="Run project checks"];
+        review [label="Fresh review session\nStandards | Spec | Security subagents"];
+        fixes [label="Apply relevant fixes"];
+        pr [label="Commit + push + open PR"];
+
+        issue -> implement -> checks;
+        checks -> review [label="Pass"];
+        review -> fixes [label="Fixes needed"];
+        fixes -> checks [label="Recheck (max 3 rounds)"];
+        review -> pr [label="Clean, unchanged + checks pass"];
+    }
+
+    subgraph cluster_human {
+        label="YOUR CONTROL";
+        fontsize=12;
+        fontcolor="#047857";
+        color="#a7f3d0";
+        style="rounded,filled";
+        fillcolor="#ecfdf5";
+        margin=18;
+
+        handoff [label="Fresh interactive OpenCode session"];
+        changes [label="Request changes\nApprove commits and pushes"];
+        retro [label="Ask for /retro when ready"];
+        merge [label="You merge PR\nGitHub closes the issue"];
+
+        handoff -> changes -> retro -> merge;
+    }
+
+    pr -> handoff;
+}

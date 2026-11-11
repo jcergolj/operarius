@@ -2,7 +2,7 @@
 
 Take a GitHub issue from implementation to PR with OpenCode. Supports Laravel, Python, C++, Rust, and other projects.
 
-![An automated worker hands a completed pull request to a developer for human-led review.](docs/workflow.png)
+![Workflow: issue, implementation, checks, review and security, fixes, commit and PR, then human-led changes, retro, and merge.](docs/workflow.png)
 
 Implementation and each review round start fresh sessions. Standards, spec, and security reviews use separate subagents. Relevant fixes are automatic; delivery requires a clean, unchanged review and passing checks within three rounds.
 
