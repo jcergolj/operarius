@@ -13,7 +13,7 @@ Requires Linux, Bash 4+, Git, `jq`, `sha256sum`, OpenCode V2, authenticated `gh`
 Install the required skills under `~/.opencode/skills/<name>/SKILL.md`:
 - From [Matt Pocock's skills](https://github.com/mattpocock/skills): **`code-review`**, **`retro`**, and **`writing-for-agents`** (required by retro).
 - Other languages also require Matt's **`tdd`** and a project-specific check command.
-- Laravel instead requires your own **`laravel-full-stack`** skill, Composer, and a `composer analyse` script.
+- Laravel instead requires the [**`laravel-full-stack`** skill](https://github.com/jcergolj/ai-framework/tree/master/skills/laravel-full-stack), Composer, and a `composer analyse` script.
 - Both flows also require a configured **`security-auditor` subagent**; this is not a Matt Pocock skill.
 
 The review skill must support uncommitted/new files and standards/spec subagents; retro must be suggestion-only. Skills and agents are not bundled.
