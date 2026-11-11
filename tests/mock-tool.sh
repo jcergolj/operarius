@@ -34,8 +34,12 @@ case "$tool" in
             *) exit 70 ;;
         esac
         ;;
-    composer)
-        [[ $1 == analyse ]]
+    composer|pytest|cargo|ctest)
+        case "$tool" in
+            composer) [[ $1 == analyse ]] ;;
+            cargo) [[ $1 == test ]] ;;
+        esac
+        [[ $PWD == "$TEST_DIR/project" ]]
         count_file="$TEST_DIR/check-count"
         count=$(cat "$count_file" 2>/dev/null || echo 0)
         count=$((count + 1))
@@ -64,6 +68,12 @@ case "$tool" in
         fi
         case "$phase" in
             implementation)
+                if [[ $(jq -r .flow "$run_dir/resume.json") == generic ]]; then
+                    grep -q '/tdd/SKILL.md' "$run_dir/implementation.prompt.txt"
+                    if grep -q 'laravel\|composer' "$run_dir/implementation.prompt.txt"; then exit 73; fi
+                else
+                    grep -q '/laravel-full-stack/SKILL.md' "$run_dir/implementation.prompt.txt"
+                fi
                 if [[ $SCENARIO == implementation-blocked ]]; then
                     echo '{"status":"blocked"}' > "$run_dir/implementation.result.json"
                     exit 0
@@ -81,6 +91,9 @@ case "$tool" in
                 if [[ $SCENARIO == agent-commits ]]; then git add --all; git commit -qm 'Unauthorized commit'; fi
                 ;;
             review-*)
+                if [[ $(jq -r .flow "$run_dir/resume.json") == generic ]]; then
+                    if grep -q 'laravel\|composer' "$run_dir/$phase.prompt.txt"; then exit 73; fi
+                fi
                 grep -q 'run the security-auditor subagent on the same changes' "$run_dir/$phase.prompt.txt"
                 grep -q 'must not modify files' "$run_dir/$phase.prompt.txt"
                 grep -q 'only after all three reports return' "$run_dir/$phase.prompt.txt"

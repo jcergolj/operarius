@@ -6,12 +6,12 @@ script="$tests/../bin/operare"
 suite=$(mktemp -d "${TMPDIR:-/tmp}/operarius-tests.XXXXXX")
 echo "Test evidence: $suite"
 mkdir "$suite/bin"
-for tool in gh opencode composer xdg-terminal-exec; do ln -s "$tests/mock-tool.sh" "$suite/bin/$tool"; done
+for tool in gh opencode composer pytest cargo ctest xdg-terminal-exec; do ln -s "$tests/mock-tool.sh" "$suite/bin/$tool"; done
 export PATH="$suite/bin:$PATH"
 export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_TERMINAL_PROMPT=0
 unset GH_REPO GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE
 export OPERARIUS_SKILLS_DIR="$suite/skills"
-for skill in laravel-full-stack code-review retro; do
+for skill in laravel-full-stack tdd code-review retro; do
     mkdir -p "$OPERARIUS_SKILLS_DIR/$skill"
     echo 'Test fixture; AI calls are mocked.' > "$OPERARIUS_SKILLS_DIR/$skill/SKILL.md"
 done
@@ -22,7 +22,7 @@ assert_absent() { if [[ -f $1 ]] && grep -q -- "$2" "$1"; then fail "Unexpected 
 
 setup() {
     unset DISPLAY WAYLAND_DISPLAY
-    unset TEST_CHECK_FAIL TEST_EXPECT_MODEL TEST_ISSUE_STATE
+    unset TEST_CHECK_FAIL TEST_EXPECT_MODEL TEST_ISSUE_STATE OPERARIUS_CHECK_COMMAND
     export SCENARIO=$1 TEST_DIR="$suite/$1" TEST_DEFAULT=${2:-main}
     export TEST_REMOTE="$TEST_DIR/remote.git" MOCK_LOG="$TEST_DIR/tools.log"
     export XDG_STATE_HOME="$TEST_DIR/state"
@@ -296,5 +296,89 @@ export TEST_ISSUE_STATE=CLOSED
 reject_resume
 assert_contains "$TEST_DIR/resume.log" 'Issue is no longer open'
 echo 'PASS: rejects closed issue'
+
+setup_generic() {
+    setup "$1"
+    git rm -q composer.json
+    git commit -qm 'Non-Laravel project'
+    git push -q origin "$TEST_DEFAULT"
+    baseline=$(git rev-parse HEAD)
+    export OPERARIUS_SKILLS_DIR="$suite/generic-skills"
+    for skill in tdd code-review retro; do
+        mkdir -p "$OPERARIUS_SKILLS_DIR/$skill"
+        echo 'Test fixture; AI calls are mocked.' > "$OPERARIUS_SKILLS_DIR/$skill/SKILL.md"
+    done
+}
+
+for language in python rust cpp; do
+    setup_generic "generic-$language"
+    case "$language" in
+        python) export OPERARIUS_CHECK_COMMAND='pytest && pytest' ;;
+        rust) export OPERARIUS_CHECK_COMMAND='cargo test' ;;
+        cpp) export OPERARIUS_CHECK_COMMAND='ctest --test-dir build' ;;
+    esac
+    bash "$script" doctor --flow generic > "$TEST_DIR/doctor.log" 2>&1 || fail 'Generic doctor should pass'
+    assert_contains "$TEST_DIR/doctor.log" 'Flow: generic'
+    assert_absent "$MOCK_LOG" '^opencode '
+    assert_absent "$MOCK_LOG" '^composer '
+    bash "$script" 123 --flow generic --mode pr > "$TEST_DIR/output.log" 2>&1 || fail 'Generic PR should succeed'
+    assert_contains "$MOCK_LOG" 'gh pr create'
+    assert_contains "$TEST_DIR/phases" '^retro$'
+    assert_absent "$MOCK_LOG" '^composer '
+    [[ -z $(git status --porcelain) ]] || fail 'Generic delivery left changes'
+    echo "PASS: generic $language checks, skills, reviews and PR delivery"
+done
+
+setup_generic generic-missing-checks
+if bash "$script" doctor --flow generic > "$TEST_DIR/output.log" 2>&1; then fail 'Accepted missing checks'; fi
+assert_contains "$TEST_DIR/output.log" 'Set OPERARIUS_CHECK_COMMAND'
+assert_absent "$MOCK_LOG" '^opencode '
+echo 'PASS: generic flow requires explicit checks'
+
+setup_generic generic-invalid-flow
+if bash "$script" 123 --flow other > "$TEST_DIR/output.log" 2>&1; then fail 'Accepted invalid flow'; fi
+assert_contains "$TEST_DIR/output.log" '--flow must be laravel or generic'
+echo 'PASS: rejects unknown flow'
+
+setup_generic generic-missing-tdd
+export OPERARIUS_CHECK_COMMAND='cargo test'
+export OPERARIUS_SKILLS_DIR="$TEST_DIR/skills-without-tdd"
+mkdir -p "$OPERARIUS_SKILLS_DIR"
+if bash "$script" doctor --flow generic > "$TEST_DIR/output.log" 2>&1; then fail 'Accepted missing tdd skill'; fi
+assert_contains "$TEST_DIR/output.log" 'Missing skill: .*/tdd/SKILL.md'
+echo 'PASS: generic flow requires tdd'
+
+setup_generic generic-resume
+export OPERARIUS_CHECK_COMMAND='cargo test'
+export SCENARIO=initial-check-fails
+if bash "$script" 123 --flow generic --mode ship > "$TEST_DIR/output.log" 2>&1; then fail 'Expected generic check failure'; fi
+recovery=$(find "$XDG_STATE_HOME/operarius" -mindepth 1 -maxdepth 1 -type d)
+assert_contains "$TEST_DIR/output.log" 'operare resume '
+assert_absent "$TEST_DIR/phases" '^review-'
+if bash "$script" resume "$recovery" --flow laravel > "$TEST_DIR/wrong-flow.log" 2>&1; then fail 'Accepted changed flow'; fi
+assert_contains "$TEST_DIR/wrong-flow.log" 'Resume must use the original flow'
+export OPERARIUS_CHECK_COMMAND='false'
+echo 'manual repair' >> app.txt
+bash "$script" resume "$recovery" > "$TEST_DIR/resume.log" 2>&1 || fail 'Generic recovery should use saved command and flow'
+[[ $(grep -c '^implementation$' "$TEST_DIR/phases") == 1 ]] || fail 'Generic resume repeated implementation'
+assert_contains "$MOCK_LOG" '^cargo test'
+assert_absent "$MOCK_LOG" '^composer '
+assert_contains "$MOCK_LOG" 'gh issue close'
+echo 'PASS: generic recovery preserves flow and check command'
+
+setup_generic generic-pipeline-fails
+export OPERARIUS_CHECK_COMMAND='false | cat'
+if bash "$script" 123 --flow generic --mode ship > "$TEST_DIR/output.log" 2>&1; then fail 'Ignored pipeline failure'; fi
+assert_absent "$TEST_DIR/phases" '^review-'
+assert_absent "$MOCK_LOG" 'gh issue close'
+[[ $(git rev-parse HEAD) == "$baseline" ]] || fail 'Committed after generic check failure'
+echo 'PASS: generic check pipeline failure prevents delivery'
+
+setup explicit-laravel
+export OPERARIUS_SKILLS_DIR="$suite/skills" OPERARIUS_CHECK_COMMAND=false
+bash "$script" 123 --flow laravel --mode ship > "$TEST_DIR/output.log" 2>&1 || fail 'Explicit Laravel flow should ignore generic checks'
+assert_contains "$MOCK_LOG" '^composer analyse'
+assert_contains "$MOCK_LOG" 'gh issue close'
+echo 'PASS: explicit Laravel flow preserves Composer verification'
 
 echo 'All workflow tests passed.'
