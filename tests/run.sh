@@ -47,9 +47,14 @@ run_success() {
     bash "$script" 123 --mode "$1" > "$TEST_DIR/output.log" 2>&1 || fail 'Expected success'
     [[ $(git log -1 --format=%s) == 'Fix issue behavior; close #123' ]] || fail 'Commit suffix'
     [[ -z $(git status --porcelain) ]] || fail 'Expected clean working tree'
-    assert_contains "$TEST_DIR/phases" '^retro$'
+    if [[ $1 == pr ]]; then
+        assert_absent "$TEST_DIR/phases" '^retro$'
+        assert_contains "$TEST_DIR/output.log" '\[5/5\] Handing off'
+    else
+        assert_contains "$TEST_DIR/phases" '^retro$'
+        assert_contains "$TEST_DIR/output.log" '\[5/5\] Preparing retrospective'
+    fi
     assert_contains "$TEST_DIR/output.log" '\[1/5\] Implementing'
-    assert_contains "$TEST_DIR/output.log" '\[5/5\] Preparing retrospective'
     assert_absent "$TEST_DIR/output.log" '"sessionID"'
     echo "PASS: $SCENARIO"
 }
@@ -98,15 +103,56 @@ assert_contains "$MOCK_LOG" 'gh pr create'
 assert_absent "$MOCK_LOG" 'gh issue close'
 [[ $(git branch --show-current) == fix/issue-123 ]] || fail 'PR branch must not have a random suffix'
 [[ $(git --git-dir="$TEST_REMOTE" rev-parse refs/heads/main) == "$baseline" ]] || fail 'PR changed default branch'
+handoff=$(find "$XDG_STATE_HOME/operarius" -mindepth 1 -maxdepth 1 -type d)
+assert_contains "$handoff/pr-review.prompt.txt" 'https://github.com/test/project/pull/42'
+assert_contains "$handoff/pr-review.prompt.txt" 'wait for my instructions'
+assert_contains "$handoff/pr-review.prompt.txt" 'Do not commit or push without my explicit approval'
+assert_contains "$handoff/pr-review.prompt.txt" 'only when I explicitly ask'
+assert_contains "$handoff/pr-review.prompt.txt" 'both the automated run and this follow-up session'
+assert_contains "$TEST_DIR/output.log" 'No interactive terminal available'
+[[ ! -f $handoff/retro.md ]] || fail 'PR ran retro automatically'
+# Saved launcher works from another directory and starts a fresh interactive session.
+cd "$TEST_DIR"
+bash "$handoff/pr-review.sh" || fail 'Saved PR review launcher failed'
+assert_contains "$TEST_DIR/handoff-opened" '^pr-review$'
 
-for scenario in fixed formatter review-check-fails new-only; do
+setup pr-desktop
+export WAYLAND_DISPLAY=wayland-test
+run_success pr
+assert_contains "$TEST_DIR/handoff-opened" '^pr-review$'
+assert_contains "$MOCK_LOG" '^xdg-terminal-exec opencode --prompt '
+assert_absent "$TEST_DIR/phases" '^retro$'
+
+setup pr-no-watch
+export WAYLAND_DISPLAY=wayland-test
+bash "$script" 123 --mode pr --no-watch > "$TEST_DIR/output.log" 2>&1 || fail 'No-watch PR should succeed'
+assert_absent "$MOCK_LOG" '^xdg-terminal-exec '
+assert_absent "$TEST_DIR/phases" '^retro$'
+assert_contains "$TEST_DIR/output.log" 'pr-review.sh'
+echo 'PASS: --no-watch PR saves handoff without opening windows'
+
+setup handoff-launch-fails
+export WAYLAND_DISPLAY=wayland-test
+if bash "$script" 123 --mode pr > "$TEST_DIR/output.log" 2>&1; then fail 'Expected handoff launch failure'; fi
+assert_contains "$MOCK_LOG" 'gh pr create'
+assert_contains "$TEST_DIR/output.log" 'Delivery succeeded, but the PR review terminal could not open'
+assert_contains "$TEST_DIR/output.log" 'pr-review.sh'
+assert_absent "$TEST_DIR/output.log" 'Nothing committed or pushed'
+assert_absent "$TEST_DIR/phases" '^retro$'
+[[ $(git --git-dir="$TEST_REMOTE" rev-parse refs/heads/fix/issue-123) == "$(git rev-parse HEAD)" ]] || fail 'PR delivery lost'
+echo 'PASS: handoff launch failure preserves PR delivery and saved launcher'
+
+for scenario in fixed formatter review-check-fails new-only security-findings; do
     setup "$scenario"
     run_success ship
     if [[ $scenario == review-check-fails ]]; then assert_contains "$TEST_DIR/phases" '^review-3$'; fi
     if [[ $scenario == fixed || $scenario == formatter ]]; then assert_contains "$TEST_DIR/phases" '^review-2$'; fi
+    if [[ $scenario == security-findings ]]; then
+        assert_contains "$TEST_DIR/phases" '^review-2$'
+    fi
 done
 
-for scenario in agent-fails implementation-blocked initial-check-fails review-blocked always-fixed false-clean missing-result empty-change agent-commits; do
+for scenario in agent-fails implementation-blocked initial-check-fails review-blocked always-fixed false-clean missing-result empty-change agent-commits security-blocked security-unresolved; do
     setup "$scenario"
     run_failure ship
     if [[ $scenario != agent-commits ]]; then
@@ -238,7 +284,12 @@ for delivery_mode in ship pr; do
     bash "$script" resume "$recovery" > "$TEST_DIR/resume.log" 2>&1 || fail 'Expected recovery success'
     [[ $(grep -c '^implementation$' "$TEST_DIR/phases") == 1 ]] || fail 'Resume repeated implementation'
     assert_contains "$TEST_DIR/phases" '^review-1$'
-    assert_contains "$TEST_DIR/phases" '^retro$'
+    if [[ $delivery_mode == ship ]]; then
+        assert_contains "$TEST_DIR/phases" '^retro$'
+    else
+        assert_absent "$TEST_DIR/phases" '^retro$'
+        [[ -s $recovery/pr-review.sh ]] || fail 'Resumed PR missing human-led handoff'
+    fi
     [[ -f $recovery/implementation.check.log ]] || fail 'Original failure log lost'
     [[ $(git log -1 --format=%s) == 'Fix issue behavior; close #123' ]] || fail 'Resume commit subject'
     [[ $(cat "$recovery/stage") == delivered ]] || fail 'Delivery checkpoint missing'
@@ -323,7 +374,7 @@ for language in python rust cpp; do
     assert_absent "$MOCK_LOG" '^composer '
     bash "$script" 123 --flow generic --mode pr > "$TEST_DIR/output.log" 2>&1 || fail 'Generic PR should succeed'
     assert_contains "$MOCK_LOG" 'gh pr create'
-    assert_contains "$TEST_DIR/phases" '^retro$'
+    assert_absent "$TEST_DIR/phases" '^retro$'
     assert_absent "$MOCK_LOG" '^composer '
     [[ -z $(git status --porcelain) ]] || fail 'Generic delivery left changes'
     echo "PASS: generic $language checks, skills, reviews and PR delivery"

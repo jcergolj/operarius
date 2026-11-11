@@ -5,7 +5,14 @@ tool=$(basename "$0")
 echo "$tool $*" >> "$MOCK_LOG"
 case "$tool" in
     xdg-terminal-exec)
-        [[ $1 == opencode && $2 == --session && $4 == "$TEST_DIR/project" ]]
+        [[ $1 == opencode && $4 == "$TEST_DIR/project" ]]
+        [[ $2 == --session || $2 == --prompt ]]
+        if [[ $2 == --prompt ]]; then
+            [[ $3 == *'human-led PR review'* && $3 == *'only when I explicitly ask'* ]]
+            [[ $* != *'--auto'* && $* != *'--continue'* && $* != *'--session'* ]]
+            echo pr-review > "$TEST_DIR/handoff-opened"
+            if [[ $SCENARIO == handoff-launch-fails ]]; then exit 1; fi
+        fi
         if [[ $SCENARIO == watch-launch-fails ]]; then exit 1; fi
         ;;
     gh)
@@ -51,6 +58,12 @@ case "$tool" in
         echo 'Checks passed'
         ;;
     opencode)
+        if [[ $1 == --prompt ]]; then
+            [[ $3 == "$TEST_DIR/project" && $PWD == "$TEST_DIR/project" ]]
+            [[ $2 == *'human-led PR review'* && $2 == *'Do not commit or push without my explicit approval'* ]]
+            echo pr-review > "$TEST_DIR/handoff-opened"
+            exit 0
+        fi
         [[ $1 == run ]]
         if [[ -n ${TEST_EXPECT_MODEL:-} ]]; then [[ $* == *"--model $TEST_EXPECT_MODEL"* ]]; fi
         [[ $* != *'--continue'* && $* != *'--session'* && $* != *'--fork'* ]]
@@ -94,19 +107,20 @@ case "$tool" in
                 if [[ $(jq -r .flow "$run_dir/resume.json") == generic ]]; then
                     if grep -q 'laravel\|composer' "$run_dir/$phase.prompt.txt"; then exit 73; fi
                 fi
-                grep -q 'run the security-auditor subagent on the same changes' "$run_dir/$phase.prompt.txt"
-                grep -q 'must not modify files' "$run_dir/$phase.prompt.txt"
+                grep -q 'delegating Standards and Spec reviews to separate subagents' "$run_dir/$phase.prompt.txt"
+                grep -q 'Run the security-auditor subagent alongside those review subagents' "$run_dir/$phase.prompt.txt"
+                grep -q 'own fresh child session and remain read-only' "$run_dir/$phase.prompt.txt"
                 grep -q 'only after all three reports return' "$run_dir/$phase.prompt.txt"
-                grep -q 'blocked (unresolved findings or security audit unavailable)' "$run_dir/$phase.prompt.txt"
+                grep -q 'blocked (unresolved findings or any required review unavailable)' "$run_dir/$phase.prompt.txt"
                 result=clean
-                if [[ $SCENARIO == review-blocked ]]; then result=blocked; fi
-                if [[ $SCENARIO == always-fixed || ( $SCENARIO == fixed && $phase == review-1 ) || ( $SCENARIO == review-check-fails && $phase == review-2 ) ]]; then
+                if [[ $SCENARIO == review-blocked || $SCENARIO == security-blocked || $SCENARIO == security-unresolved ]]; then result=blocked; fi
+                if [[ $SCENARIO == always-fixed || ( $SCENARIO == fixed && $phase == review-1 ) || ( $SCENARIO == security-findings && $phase == review-1 ) || ( $SCENARIO == review-check-fails && $phase == review-2 ) ]]; then
                     echo "$phase fix" >> app.txt
                     result=fixed
                 fi
                 # A clean claim cannot bypass the fingerprint gate.
                 if [[ $SCENARIO == false-clean ]]; then echo unexpected >> regression.txt; fi
-                echo 'Standards: reviewed. Spec: reviewed.' > "$run_dir/$phase.md"
+                echo 'Standards: reviewed. Spec: reviewed. Security: reviewed.' > "$run_dir/$phase.md"
                 printf '{"status":"%s"}\n' "$result" > "$run_dir/$phase.result.json"
                 ;;
             retro)
