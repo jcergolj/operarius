@@ -81,6 +81,10 @@ case "$tool" in
                 if [[ $SCENARIO == agent-commits ]]; then git add --all; git commit -qm 'Unauthorized commit'; fi
                 ;;
             review-*)
+                grep -q 'run the security-auditor subagent on the same changes' "$run_dir/$phase.prompt.txt"
+                grep -q 'must not modify files' "$run_dir/$phase.prompt.txt"
+                grep -q 'only after all three reports return' "$run_dir/$phase.prompt.txt"
+                grep -q 'blocked (unresolved findings or security audit unavailable)' "$run_dir/$phase.prompt.txt"
                 result=clean
                 if [[ $SCENARIO == review-blocked ]]; then result=blocked; fi
                 if [[ $SCENARIO == always-fixed || ( $SCENARIO == fixed && $phase == review-1 ) || ( $SCENARIO == review-check-fails && $phase == review-2 ) ]]; then

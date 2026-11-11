@@ -10,6 +10,7 @@ Each AI phase starts a fresh session. A small handoff carries the essentials bet
 
 - Linux, Bash 4+, Git, `jq`, `sha256sum`, and Composer.
 - OpenCode V2, configured with a working model.
+- A configured `security-auditor` subagent for the security review (no additional skill required).
 - GitHub CLI (`gh`), signed in with access to your repository.
 - A Laravel project with an `origin` remote and a `composer analyse` script that runs your checks and tests.
 - Your own `laravel-full-stack`, `code-review`, and `retro` skills. These are **not bundled**. Install each as `<skill-name>/SKILL.md` under `~/.opencode/skills`, or set `OPERARIUS_SKILLS_DIR` to their parent directory. Install any skills they depend on too.
@@ -43,7 +44,7 @@ The script:
 
 1. Implements the issue and relevant regression tests.
 2. Runs `composer analyse`. If it fails, stops.
-3. Reviews uncommitted changes in fresh sessions, applies fixes, and reruns checks. Allows at most three review rounds; delivery requires a clean, unchanged review and passing checks.
+3. Reviews uncommitted changes in fresh sessions, running a read-only security audit alongside the standards/spec reviews. Applies fixes after all three reports return and reruns checks. Allows at most three review rounds; delivery requires a clean, unchanged review and passing checks. An unavailable security audit blocks delivery. Security reports include confirmed vulnerabilities and coverage limitations.
 4. Commits with `; close #123` at the end of the subject.
 5. Pushes and opens a PR, or pushes directly and closes the issue after confirming the commit reached the remote default branch.
 6. Runs a fresh retro after successful delivery. It suggests improvements without applying them.
