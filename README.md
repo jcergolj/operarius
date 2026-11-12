@@ -1,22 +1,28 @@
 # Operarius
 
-Take a GitHub issue from implementation to PR with OpenCode. Supports Laravel, Python, C++, Rust, and other projects.
+Take a GitHub issue from implementation to PR with OpenCode.
 
-![Workflow: issue, implementation, checks, review and security, fixes, commit and PR, then human-led changes, retro, and merge.](docs/workflow.png)
+```bash
+operare 123                   # Laravel → PR
+operare 123 --generic         # Other languages → PR
+operare 123 --ship            # Laravel → direct delivery
+operare 123 --generic --ship   # Other languages → direct delivery
+```
 
-Implementation and each review round start fresh sessions. Standards, spec, and security reviews use separate subagents. Relevant fixes are automatic; delivery requires a clean, unchanged review and passing checks within three rounds.
+**`--ship` pushes directly to the default branch and closes the issue without further confirmation.** Without it, you review and merge the PR yourself.
 
 ## Setup
 
 Requires Linux, Bash 4+, Git, `jq`, `sha256sum`, OpenCode V2, authenticated `gh`, and your project's build/test tools.
 
-Install the required skills under `~/.opencode/skills/<name>/SKILL.md`:
-- From [Matt Pocock's skills](https://github.com/mattpocock/skills): **`code-review`**, **`retro`**, and **`writing-for-agents`** (required by retro).
-- Other languages also require Matt's **`tdd`** and a project-specific check command.
-- Laravel instead requires the [**`laravel-full-stack`** skill](https://github.com/jcergolj/ai-framework/tree/master/skills/laravel-full-stack), Composer, and a `composer analyse` script.
-- Both flows also require a configured **`security-auditor` subagent**; this is not a Matt Pocock skill.
+Install these skills and configure the reviewer:
 
-The review skill must support uncommitted/new files and standards/spec subagents; retro must be suggestion-only. Skills and agents are not bundled.
+- [Matt Pocock's `code-review`](https://github.com/mattpocock/skills), supporting uncommitted/new files and separate standards/spec reviewers.
+- A **`security-auditor` subagent**.
+- **Laravel:** [`laravel-full-stack`](https://github.com/jcergolj/ai-framework/tree/master/skills/laravel-full-stack), Composer, and a `composer analyse` script.
+- **Other languages:** Matt's `tdd` skill and `OPERARIUS_CHECK_COMMAND`, covering your project's required build, lint, and test steps.
+
+Skills default to `~/.opencode/skills/<name>/SKILL.md`; override with `OPERARIUS_SKILLS_DIR`. OpenCode uses its configured model.
 
 ```bash
 git clone https://github.com/jcergolj/operarius.git
@@ -25,50 +31,31 @@ mkdir -p ~/.local/bin
 ln -s "$PWD/bin/operare" ~/.local/bin/operare
 ```
 
-Ensure `~/.local/bin` is on your `PATH`.
+Ensure `~/.local/bin` is on your `PATH`. Run from your project's clean, up-to-date default branch with an `origin` remote.
 
-## Run
-
-Start from your project's clean, up-to-date default branch, with an `origin` remote:
+For non-Laravel projects, configure checks in your shell or project environment:
 
 ```bash
-operare 123                                              # Laravel (default)
-OPERARIUS_CHECK_COMMAND='python -m pytest' operare 123 --flow generic
-OPERARIUS_CHECK_COMMAND='cargo test' operare 123 --flow generic
-OPERARIUS_CHECK_COMMAND='cmake --build build && ctest --test-dir build' operare 123 --flow generic
+export OPERARIUS_CHECK_COMMAND='cargo test'
+operare 123 --generic
 ```
 
-Choose checks appropriate to your project, including required build/lint/test steps. Generic checks run in Bash from the repository root; join required steps with `&&`. Laravel always runs `composer analyse`.
+Checks run in Bash from the repository root; combine required steps with `&&`. Laravel always runs `composer analyse`.
 
-## Commands
+## Workflow
 
-| Command / option | Purpose |
-| --- | --- |
-| `operare --help` | Show usage. |
-| `operare ISSUE` | Implement an issue number; prompts for delivery mode. |
-| `--flow laravel` / `--flow generic` | Select the flow (Laravel is default). |
-| `--mode pr` | Open a PR without prompting. |
-| `--mode ship` | Push directly to the default branch and close the issue; no further confirmation. |
-| `--model PROVIDER/MODEL` | Override the automated phases' model. |
-| `--no-watch` | Disable automated watcher windows, not the final PR handoff. |
-| `operare doctor [--flow laravel\|generic]` | Check setup without AI calls or executing project checks. |
-| `operare resume RUN_DIRECTORY [--no-watch]` | Retry failed initial checks using saved flow/model/checks, then review and deliver. |
-| `bash RUN_DIRECTORY/pr-review.sh` | Open the saved human-led PR review session. |
+1. Check setup, implement the issue, and run project checks.
+2. Run fresh standards, spec, and security review subagents; apply relevant fixes.
+3. Require an unchanged, clean review and passing checks within three rounds.
+4. Commit, push, and open a PR—or deliver directly with `--ship`.
 
-Combine options after the issue number. Generic runs and doctor require `OPERARIUS_CHECK_COMMAND`. Override skill location with `OPERARIUS_SKILLS_DIR`; logs live under `${XDG_STATE_HOME:-~/.local/state}/operarius/`.
+Each implementation/review phase starts a fresh session. Output stays in the current terminal. After PR creation, a fresh interactive session waits for your instructions; further commits and pushes require your approval. Without an interactive terminal, the script prints a saved launcher. Retrospectives are optional and user-requested.
 
-## After the PR opens
+## Safety
 
-A fresh interactive session reads the handoff and waits for your instructions. Request changes, explicitly approve commits/pushes, and ask for `/retro` when ready. You merge the PR; GitHub closes the issue. Direct shipping instead runs retro automatically.
-
-Desktop runs open a terminal; otherwise the handoff uses the current interactive terminal or prints a saved launcher. It uses normal OpenCode agent/model settings without `--auto`. Don't send instructions to automated watcher sessions.
-
-## Safety and recovery
-
-- Automated phases use `--auto`: trust your repository, issues, skills, and check commands. This is not a sandbox.
-- Failed runs preserve changes. Only failed **initial implementation checks** support `resume`; fix them manually first. Other failures need inspection.
-- A failed handoff or retro does not undo delivery. Use the saved handoff launcher; don't rerun delivery.
-- Logs may contain private code and issue details. Keep them private.
+- Automated phases use `--auto`. Trust your repository, issue, skills, and check command; this is not a sandbox.
+- Failures preserve changes and logs. Inspect them and continue manually; do not blindly rerun delivery.
+- Logs and handoffs live under `${XDG_STATE_HOME:-~/.local/state}/operarius/` and may contain private code.
 
 ## Tests
 

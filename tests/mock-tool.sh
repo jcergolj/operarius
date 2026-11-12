@@ -4,17 +4,6 @@ set -euo pipefail
 tool=$(basename "$0")
 echo "$tool $*" >> "$MOCK_LOG"
 case "$tool" in
-    xdg-terminal-exec)
-        [[ $1 == opencode && $4 == "$TEST_DIR/project" ]]
-        [[ $2 == --session || $2 == --prompt ]]
-        if [[ $2 == --prompt ]]; then
-            [[ $3 == *'human-led PR review'* && $3 == *'only when I explicitly ask'* ]]
-            [[ $* != *'--auto'* && $* != *'--continue'* && $* != *'--session'* ]]
-            echo pr-review > "$TEST_DIR/handoff-opened"
-            if [[ $SCENARIO == handoff-launch-fails ]]; then exit 1; fi
-        fi
-        if [[ $SCENARIO == watch-launch-fails ]]; then exit 1; fi
-        ;;
     gh)
         case "$1 $2" in
             'repo view')
@@ -24,7 +13,7 @@ case "$tool" in
                 if [[ $* == *'--jq'* ]]; then
                     echo "${TEST_ISSUE_STATE:-OPEN}"
                 else
-                    echo '{"number":123,"title":"Fix behavior","body":"Add regression coverage","url":"https://github.com/test/project/issues/123","state":"OPEN"}'
+                    printf '{"number":123,"title":"Fix behavior","body":"Add regression coverage","url":"https://github.com/test/project/issues/123","state":"%s"}\n' "${TEST_ISSUE_STATE:-OPEN}"
                 fi
                 ;;
             'issue close')
@@ -65,7 +54,7 @@ case "$tool" in
             exit 0
         fi
         [[ $1 == run ]]
-        if [[ -n ${TEST_EXPECT_MODEL:-} ]]; then [[ $* == *"--model $TEST_EXPECT_MODEL"* ]]; fi
+        [[ $* != *'--model'* && $* != *'--format'* ]]
         [[ $* != *'--continue'* && $* != *'--session'* && $* != *'--fork'* ]]
         phase=''
         while [[ $# -gt 0 ]]; do
@@ -81,7 +70,7 @@ case "$tool" in
         fi
         case "$phase" in
             implementation)
-                if [[ $(jq -r .flow "$run_dir/resume.json") == generic ]]; then
+                if grep -q '^Flow: generic$' "$run_dir/run.md"; then
                     grep -q '/tdd/SKILL.md' "$run_dir/implementation.prompt.txt"
                     if grep -q 'laravel\|composer' "$run_dir/implementation.prompt.txt"; then exit 73; fi
                 else
@@ -104,7 +93,7 @@ case "$tool" in
                 if [[ $SCENARIO == agent-commits ]]; then git add --all; git commit -qm 'Unauthorized commit'; fi
                 ;;
             review-*)
-                if [[ $(jq -r .flow "$run_dir/resume.json") == generic ]]; then
+                if grep -q '^Flow: generic$' "$run_dir/run.md"; then
                     if grep -q 'laravel\|composer' "$run_dir/$phase.prompt.txt"; then exit 73; fi
                 fi
                 grep -q 'delegating Standards and Spec reviews to separate subagents' "$run_dir/$phase.prompt.txt"
@@ -123,13 +112,9 @@ case "$tool" in
                 echo 'Standards: reviewed. Spec: reviewed. Security: reviewed.' > "$run_dir/$phase.md"
                 printf '{"status":"%s"}\n' "$result" > "$run_dir/$phase.result.json"
                 ;;
-            retro)
-                echo 'No substantiated improvements.' > "$run_dir/retro.md"
-                if [[ $SCENARIO == retro-fails ]]; then exit 1; fi
-                ;;
             *) exit 71 ;;
         esac
-        printf '{"type":"text","sessionID":"test-%s","text":"Done"}\n' "$phase"
+        printf '%s: Done\n' "$phase"
         ;;
     *) exit 72 ;;
 esac
