@@ -13,7 +13,7 @@ digraph workflow {
     edge [fontname="DejaVu Sans", fontsize=10, color="#64748b", fontcolor="#475569"];
 
     subgraph cluster_automated {
-        label="AUTOMATED";
+        label="ONE INTERACTIVE OPENCODE AUTO SESSION";
         fontsize=12;
         fontcolor="#1d4ed8";
         color="#bfdbfe";
@@ -22,13 +22,14 @@ digraph workflow {
         margin=18;
 
         issue [label="GitHub issue"];
+        session [label="Preflight → open fresh oa session"];
         implement [label="Implement + regression tests"];
         checks [label="Run project checks"];
-        review [label="Fresh review session\nStandards | Spec | Security subagents"];
+        review [label="Fresh read-only child sessions\nStandards | Spec | Security subagents"];
         fixes [label="Apply relevant fixes"];
         pr [label="Commit + push + open PR"];
 
-        issue -> implement -> checks;
+        issue -> session -> implement -> checks;
         checks -> review [label="Pass"];
         review -> fixes [label="Fixes needed"];
         fixes -> checks [label="Recheck (max 3 rounds)"];
@@ -44,7 +45,7 @@ digraph workflow {
         fillcolor="#ecfdf5";
         margin=18;
 
-        handoff [label="Fresh interactive OpenCode session"];
+        handoff [label="Same session waits for instructions"];
         changes [label="Request changes\nApprove commits and pushes"];
         retro [label="Ask for /retro when ready"];
         merge [label="You merge PR\nGitHub closes the issue"];

@@ -1,6 +1,6 @@
 # Operarius
 
-Take a GitHub issue from implementation to PR with OpenCode.
+Open one fresh interactive OpenCode session that takes a GitHub issue from implementation to PR.
 
 ```bash
 operare 123                   # Laravel → PR
@@ -44,18 +44,22 @@ Checks run in Bash from the repository root; combine required steps with `&&`. L
 
 ## Workflow
 
-1. Check setup, implement the issue, and run project checks.
-2. Run fresh standards, spec, and security review subagents; apply relevant fixes.
-3. Require an unchanged, clean review and passing checks within three rounds.
-4. Commit, push, and open a PR—or deliver directly with `--ship`.
+1. Bash checks setup and the issue, then opens `opencode --auto --prompt …` (equivalent to `oa`).
+2. In that session, implement the issue and run project checks.
+3. Run fresh standards, spec, and security review subagents; apply relevant fixes.
+4. Require an unchanged, clean review and passing checks within three rounds.
+5. Commit, push, and open a PR—or deliver directly with `--ship`.
 
-Each implementation/review phase starts a fresh session. Output stays in the current terminal. After PR creation, a fresh interactive session waits for your instructions; further commits and pushes require your approval. Without an interactive terminal, the script prints a saved launcher. Retrospectives are optional and user-requested.
+The same interactive session handles the entire workflow in the current terminal, then waits for your instructions after delivery. Further changes, commits, and pushes require your approval. Only review subagents use fresh child sessions. Retrospectives are optional and user-requested.
+
+Run from an interactive terminal. A saved `workflow.sh` launcher and the full prompt are printed before OpenCode starts, including if launch fails. The launcher starts a fresh session, not a resume: inspect existing changes and delivery state before rerunning it.
 
 ## Safety
 
-- Automated phases use `--auto`. Trust your repository, issue, skills, and check command; this is not a sandbox.
-- Failures preserve changes and logs. Inspect them and continue manually; do not blindly rerun delivery.
-- Logs and handoffs live under `${XDG_STATE_HOME:-~/.local/state}/operarius/` and may contain private code.
+- The session uses `--auto`. Trust your repository, issue, skills, and check command; this is not a sandbox.
+- Bash enforces preflight only. The workflow prompt instructs the agent to enforce checks, reviews, Git invariants, and delivery ordering; these are no longer enforced by a Bash orchestrator.
+- On failure, the agent is instructed to preserve changes and evidence. Inspect them and continue manually; do not blindly rerun delivery.
+- Workflow instructions and agent-written evidence live under `${XDG_STATE_HOME:-~/.local/state}/operarius/` and may contain private code.
 
 ## Tests
 
@@ -64,4 +68,4 @@ bash tests/run.sh
 shellcheck bin/operare tests/*.sh
 ```
 
-Tests use local Git repositories and mocked tools—no paid AI calls or network requests.
+Tests cover preflight, the immediate fresh interactive launch, saved launchers, and workflow instructions using local Git repositories and mocked tools—no paid AI calls or network requests. They do not simulate or verify the agent's execution of the workflow.
