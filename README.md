@@ -20,7 +20,6 @@ Install these skills and configure the reviewer:
 - [Matt Pocock's `code-review`](https://github.com/mattpocock/skills), supporting uncommitted/new files and separate standards/spec reviewers.
 - A **`security-auditor` subagent**.
 - **Laravel:** [`laravel-full-stack`](https://github.com/jcergolj/ai-framework/tree/master/skills/laravel-full-stack), Composer, and a `composer analyse` script.
-- **Laravel logic changes:** a project-installed [Infection](https://infection.github.io/) version compatible with the project's PHPUnit, and a working coverage driver (such as Xdebug or PCOV). Missing tooling blocks delivery; the agent does not install dependencies automatically.
 - **Other languages:** Matt's `tdd` skill and `OPERARIUS_CHECK_COMMAND`, covering your project's required build, lint, and test steps.
 
 Skills default to `~/.opencode/skills/<name>/SKILL.md`; override with `OPERARIUS_SKILLS_DIR`. OpenCode uses its configured model.
@@ -43,14 +42,29 @@ operare 123 --generic
 
 Checks run in Bash from the repository root; combine required steps with `&&`. Laravel always runs `composer analyse`.
 
+### Set up mutation testing for Laravel
+
+[Infection](https://infection.github.io/) is the mutation-testing tool. It makes small changes to your application code and reruns tests to see whether they detect those changes. It needs a PHPUnit-compatible version and a coverage driver such as Xdebug or PCOV.
+
+From your **Laravel project root**, if Infection isn't already installed:
+
+```bash
+composer require --dev infection/infection
+vendor/bin/infection --version
+```
+
+Follow [Infection's setup guide](https://infection.github.io/guide/usage.html) to configure your application source (typically `app/`) and PHPUnit. Verify a small run against one application PHP file before using `operare`. Commit the project setup separately: `operare` requires a clean working tree when it starts and does not install or configure Infection for you.
+
 ## Workflow
 
 1. Bash checks setup and the issue, then opens `opencode --auto --prompt …` (equivalent to `oa`).
 2. In that session, implement the issue and run project checks.
-3. For Laravel, automatically mutation-test issue-related application logic, including new files and the relevant decision/method for bug fixes. Inspect survivors and make at most one meaningful test-improvement pass. Save the score, separate outcome counts, scope, and remaining gaps with run evidence; include the summary in the PR and final response. No score threshold or skip flag: low scores do not block delivery, tool failures do. Changes without applicable logic are reported as not applicable. Generic workflows are unchanged.
+3. For Laravel, mutation-test the issue's application logic and make at most one focused test-improvement pass. Save the scope, score, outcome counts, and remaining gaps in `mutation.md` in the run-evidence directory. Summarize the results in the PR and final response.
 4. Run fresh standards, spec, and security review subagents; apply relevant fixes. Refresh mutation results before another round when relevant logic/tests change.
 5. Require an unchanged, clean review and passing checks within three rounds.
 6. Commit, push, and open a PR—or deliver directly with `--ship`.
+
+Mutation testing has no skip flag or minimum score. Missing or broken tooling blocks delivery for applicable Laravel changes; a low score alone does not. Changes without applicable logic are reported as **not applicable**. The `--generic` workflow does not run Infection.
 
 The same interactive session handles the entire workflow in the current terminal, then waits for your instructions after delivery. Further changes, commits, and pushes require your approval. Only review subagents use fresh child sessions. Retrospectives are optional and user-requested.
 
