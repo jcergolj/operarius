@@ -20,6 +20,7 @@ Install these skills and configure the reviewer:
 - [Matt Pocock's `code-review`](https://github.com/mattpocock/skills), supporting uncommitted/new files and separate standards/spec reviewers.
 - A **`security-auditor` subagent**.
 - **Laravel:** [`laravel-full-stack`](https://github.com/jcergolj/ai-framework/tree/master/skills/laravel-full-stack), Composer, and a `composer analyse` script.
+- **Laravel logic changes:** a project-installed [Infection](https://infection.github.io/) version compatible with the project's PHPUnit, and a working coverage driver (such as Xdebug or PCOV). Missing tooling blocks delivery; the agent does not install dependencies automatically.
 - **Other languages:** Matt's `tdd` skill and `OPERARIUS_CHECK_COMMAND`, covering your project's required build, lint, and test steps.
 
 Skills default to `~/.opencode/skills/<name>/SKILL.md`; override with `OPERARIUS_SKILLS_DIR`. OpenCode uses its configured model.
@@ -46,9 +47,10 @@ Checks run in Bash from the repository root; combine required steps with `&&`. L
 
 1. Bash checks setup and the issue, then opens `opencode --auto --prompt …` (equivalent to `oa`).
 2. In that session, implement the issue and run project checks.
-3. Run fresh standards, spec, and security review subagents; apply relevant fixes.
-4. Require an unchanged, clean review and passing checks within three rounds.
-5. Commit, push, and open a PR—or deliver directly with `--ship`.
+3. For Laravel, automatically mutation-test issue-related application logic, including new files and the relevant decision/method for bug fixes. Inspect survivors and make at most one meaningful test-improvement pass. Save the score, separate outcome counts, scope, and remaining gaps with run evidence; include the summary in the PR and final response. No score threshold or skip flag: low scores do not block delivery, tool failures do. Changes without applicable logic are reported as not applicable. Generic workflows are unchanged.
+4. Run fresh standards, spec, and security review subagents; apply relevant fixes. Refresh mutation results before another round when relevant logic/tests change.
+5. Require an unchanged, clean review and passing checks within three rounds.
+6. Commit, push, and open a PR—or deliver directly with `--ship`.
 
 The same interactive session handles the entire workflow in the current terminal, then waits for your instructions after delivery. Further changes, commits, and pushes require your approval. Only review subagents use fresh child sessions. Retrospectives are optional and user-requested.
 

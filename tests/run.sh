@@ -90,6 +90,20 @@ assert_contains "$prompt" 'Open a PR in test/project with base main and head fix
 assert_contains "$prompt" 'Do not merge the PR or close the issue'
 assert_contains "$prompt" '/laravel-full-stack/SKILL.md'
 assert_contains "$handoff/run.md" 'Verification: composer analyse'
+assert_contains "$prompt" '2a. MUTATION: Before review'
+assert_contains "$prompt" "against baseline $TEST_BASELINE"
+assert_contains "$prompt" 'new untracked files'
+assert_contains "$prompt" 'corrected decision and relevant surrounding method'
+assert_contains "$prompt" 'Do not rely on branch-diff defaults'
+assert_contains "$prompt" 'at most one focused test-improvement pass'
+assert_contains "$prompt" 'No minimum mutation score is required'
+assert_contains "$prompt" 'execution/reporting errors block delivery'
+assert_contains "$prompt" 'not applicable'
+assert_contains "$prompt" 'timed-out, and errored'
+assert_contains "$prompt" 'no mutations generated'
+assert_contains "$prompt" 'rerun mutation reporting before the next review round'
+[[ $(grep -n '2. CHECK:' "$prompt" | cut -d: -f1) -lt $(grep -n '2a. MUTATION:' "$prompt" | cut -d: -f1) ]] || fail 'Mutation precedes checks'
+[[ $(grep -n '2a. MUTATION:' "$prompt" | cut -d: -f1) -lt $(grep -n '3. REVIEW:' "$prompt" | cut -d: -f1) ]] || fail 'Mutation follows review'
 # The saved launcher opens the same fresh session from another working directory.
 cd "$TEST_DIR"
 bash "$handoff/workflow.sh" || fail 'Saved workflow launcher failed'
@@ -105,6 +119,7 @@ run_success --ship
 assert_contains "$prompt" 'Direct delivery is explicitly authorized by --ship'
 assert_contains "$prompt" 'Only then close issue #123'
 assert_absent "$prompt" 'Open a PR in'
+assert_contains "$prompt" '2a. MUTATION: Before review'
 
 setup generic
 git rm -q composer.json
@@ -116,12 +131,14 @@ run_success --generic
 assert_contains "$handoff/run.md" 'Verification: cargo test && cargo clippy'
 assert_contains "$prompt" '/tdd/SKILL.md'
 assert_absent "$prompt" 'laravel\|composer'
+assert_absent "$prompt" 'MUTATION\|Infection\|mutation.md'
 
 setup generic-ship
 export OPERARIUS_CHECK_COMMAND='pytest'
 run_success --generic --ship
 assert_contains "$prompt" '/tdd/SKILL.md'
 assert_contains "$prompt" 'Direct delivery is explicitly authorized by --ship'
+assert_absent "$prompt" 'MUTATION\|Infection\|mutation.md'
 
 setup launch-fails
 run_failure
@@ -162,7 +179,7 @@ assert_contains "$TEST_DIR/output.log" 'Set OPERARIUS_CHECK_COMMAND'
 assert_absent "$MOCK_LOG" '^opencode '
 
 setup invalid-options
-for option in --flow --mode --model --no-watch --unknown; do
+for option in --flow --mode --model --no-watch --unknown --mutation --skip-mutation; do
     run_failure "$option"
     assert_contains "$TEST_DIR/output.log" 'Unexpected arguments'
 done

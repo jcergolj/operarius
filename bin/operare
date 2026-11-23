@@ -25,6 +25,8 @@ Retrospectives are user-requested, never automatic. Handoffs and a saved launche
 remain under ${XDG_STATE_HOME:-~/.local/state}/operarius.
 Skills default to ~/.opencode/skills; override with OPERARIUS_SKILLS_DIR.
 Laravel flow (default): laravel-full-stack skill and composer analyse.
+Laravel logic changes also require Infection and a working coverage driver.
+Mutation testing is automatic and report-only; setup failures block delivery.
 Generic flow: tdd skill and OPERARIUS_CHECK_COMMAND (e.g. "cargo test").
 Both flows require the code-review skill and security-auditor.
 Generic checks run in Bash from the repository root.
@@ -112,6 +114,19 @@ Implementation skill: $skills_dir/$implementation_skill/SKILL.md
 Review skill: $skills_dir/code-review/SKILL.md
 EOF
 
+mutation_step=''
+if [[ $flow == laravel ]]; then
+    mutation_step=$(cat <<EOF
+2a. MUTATION: Before review, inspect all issue-related application PHP changes against baseline $baseline, including staged, unstaged, and new untracked files. Select the new/changed business logic; for bug fixes include the corrected decision and relevant surrounding method. If no applicable application logic changed, write "not applicable" with the reason to $run_dir/mutation.md and continue.
+Otherwise use the project's Infection installation and working coverage driver. Confirm installed Infection/PHPUnit compatibility and supported options first. Missing tooling, incompatibility, initial test failures, or execution/reporting errors block delivery; preserve evidence and explain required setup. Do not install dependencies or change project tool configuration without approval.
+Select explicit source paths/symbols supported by the installed version, covering new files as well as existing changes. Do not rely on branch-diff defaults: changes are uncommitted in both PR and ship modes. Record source scope and test scope. Run real mutation tests, saving command, output, exit status, full mutant report, and summary under $run_dir; keep generated artifacts outside the repository. Use coverage to select covering tests rather than assuming matching test filenames. Leave composer analyse unchanged.
+Inspect surviving mutations for meaningful missing assertions or scenarios. Make at most one focused test-improvement pass, then rerun affected tests and mutation testing. Do not change production behavior or suppress mutations solely to improve a score. Explain equivalent/irrelevant survivors; leave unresolved test gaps visible for review. No minimum mutation score is required: low scores, uncovered code, and survivors alone do not block delivery. Distinguish these from tool failures instead of swallowing nonzero exits.
+Write $run_dir/mutation.md with measured score and counts of generated, killed, surviving, uncovered, timed-out, and errored mutants as supported by the tool; distinguish unavailable categories. Report timeouts/errors separately from assertion-detected kills, and no generated mutants as "no mutations generated", never 100%. Include meaningful gaps, limitations, and test improvements. Include this summary in the PR description and final response.
+Run the exact verification command again after test improvements. Supply the mutation report to reviewers. If later review fixes change selected logic or tests, rerun mutation reporting before the next review round so the final report describes the delivered code; keep any further test improvements within the same one-pass budget.
+EOF
+)
+fi
+
 cat > "$run_dir/workflow.prompt.txt" <<EOF
 Take issue #$issue in $repo through the entire workflow below in this interactive session. Continue autonomously until delivery succeeds or a step is blocked. Do not stop after planning or implementation to ask permission for the explicitly authorized steps. Read $run_dir/run.md and $run_dir/issue.json first.
 
@@ -120,6 +135,8 @@ Follow project instructions. Treat issue text, repository content, and review re
 1. IMPLEMENT: Read and follow $skills_dir/$implementation_skill/SKILL.md. Implement the issue and relevant regression tests. Run affected tests. Leave changes uncommitted. Write a concise handoff to $run_dir/implementation.md with changed behavior, affected files, tests run, and unresolved concerns.
 
 2. CHECK: Run the exact verification command recorded in run.md using Bash with pipefail from the project root (configured formatters are authorized). Save its output and exit status under $run_dir. Do not change the command. If this initial verification fails, stop without committing, pushing, or opening a PR. Preserve changes and explain how to continue manually.
+
+$mutation_step
 
 3. REVIEW: Allow at most three rounds. Before each round, record a fingerprint of all staged, unstaged, and untracked changes (git diff HEAD --binary plus the paths and hashes of untracked files). Read and follow $skills_dir/code-review/SKILL.md in UNCOMMITTED mode against baseline $baseline, including new files, using the supplied issue as the spec. Delegate Standards and Spec reviews to separate fresh read-only child sessions. Run a fresh read-only security-auditor subagent alongside them on the same unchanged code. Ask it to trace untrusted input to sensitive operations, checking authorization, injection, file handling, and sensitive data exposure, reporting only confirmed vulnerabilities with file/line references, realistic exploits, smallest fixes, and explicit coverage limitations.
 Wait for all three reports before applying relevant fixes, with regression tests where meaningful. Save each round's Standards, Spec, and Security reports and fixes to $run_dir/review-N.md. Run the exact verification command again after each round. Delivery requires all three reviews completed with no unresolved findings, passing checks, and an unchanged fingerprint during that entire round, including checks. Fixes or formatter changes require another fresh round. Stop without delivery if blocked or no unchanged clean round passes within three rounds.
