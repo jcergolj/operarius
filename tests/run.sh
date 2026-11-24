@@ -59,6 +59,9 @@ run_success() {
     handoff=$(find "$XDG_STATE_HOME/operarius" -mindepth 1 -maxdepth 1 -type d)
     prompt="$handoff/workflow.prompt.txt"
     assert_contains "$prompt" 'Continue autonomously until delivery succeeds'
+    assert_contains "$prompt" 'What I need from you'
+    assert_contains "$prompt" 'Tell me exactly how to reply'
+    assert_contains "$prompt" 'give short numbered steps'
     assert_contains "$prompt" 'at most three rounds'
     assert_contains "$prompt" 'separate fresh read-only child sessions'
     assert_contains "$prompt" 'security-auditor subagent alongside them'
