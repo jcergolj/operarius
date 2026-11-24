@@ -60,7 +60,9 @@ run_success() {
     prompt="$handoff/workflow.prompt.txt"
     assert_contains "$prompt" 'Continue autonomously until delivery succeeds'
     assert_contains "$prompt" 'What I need from you'
-    assert_contains "$prompt" 'Tell me exactly how to reply'
+    assert_contains "$prompt" 'give numbered options'
+    assert_contains "$prompt" 'a single number is enough'
+    assert_contains "$prompt" 'Ask for free-form input only when'
     assert_contains "$prompt" 'give short numbered steps'
     assert_contains "$prompt" 'at most three rounds'
     assert_contains "$prompt" 'separate fresh read-only child sessions'
