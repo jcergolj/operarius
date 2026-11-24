@@ -61,7 +61,7 @@ Follow [Infection's setup guide](https://infection.github.io/guide/usage.html) t
 2. In that session, implement the issue and run project checks.
 3. For Laravel, mutation-test the issue's application logic and make at most one focused test-improvement pass. Save the scope, score, outcome counts, and remaining gaps in `mutation.md` in the run-evidence directory. Summarize the results in the PR and final response.
 4. Run fresh standards, spec, and security review subagents; apply relevant fixes. Refresh mutation results before another round when relevant logic/tests change.
-5. Require an unchanged, clean review and passing checks within three rounds.
+5. Require a clean review and passing checks within three rounds. Blank-line-only changes made by a configured formatter during passing post-review checks (such as Rector spacing out test assertions) do not require another review if they are verified and recorded. Other changes still require a fresh review.
 6. Commit, push, and open a PR—or deliver directly with `--ship`.
 
 Mutation testing has no skip flag or minimum score. Missing or broken tooling blocks delivery for applicable Laravel changes; a low score alone does not. Changes without applicable logic are reported as **not applicable**. The `--generic` workflow does not run Infection.
