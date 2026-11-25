@@ -25,15 +25,15 @@ digraph workflow {
         session [label="Preflight → open fresh oa session"];
         implement [label="Implement + regression tests"];
         checks [label="Run project checks"];
-        review [label="Fresh read-only child sessions\nStandards | Spec | Security subagents"];
-        fixes [label="Apply relevant fixes"];
+        review [label="Fresh read-only child sessions\nStandards | Spec | Security subagents\nRecord findings in shared ledger"];
+        fixes [label="Fix in-scope blockers"];
         pr [label="Commit + push + open PR"];
 
         issue -> session -> implement -> checks;
         checks -> review [label="Pass"];
-        review -> fixes [label="Fixes needed"];
+        review -> fixes [label="In-scope blocker fixes needed"];
         fixes -> checks [label="Recheck (max 3 rounds)"];
-        review -> pr [label="Clean, unchanged + checks pass"];
+        review -> pr [label="No delivery blockers,\nfingerprint accepted + checks pass"];
     }
 
     subgraph cluster_human {

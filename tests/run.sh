@@ -67,7 +67,7 @@ run_success() {
     assert_contains "$prompt" 'at most three rounds'
     assert_contains "$prompt" 'separate fresh read-only child sessions'
     assert_contains "$prompt" 'security-auditor subagent alongside them'
-    assert_contains "$prompt" 'Wait for all three reports before applying'
+    assert_contains "$prompt" 'Wait for all three reports before applying in-scope blocker fixes'
     assert_contains "$prompt" 'unchanged fingerprint'
     assert_contains "$prompt" 'only during successful post-review verification'
     assert_contains "$prompt" 'blank lines outside strings, heredocs, comments, and inline output'
@@ -79,6 +79,39 @@ run_success() {
     assert_contains "$prompt" 'retrospective only if I explicitly ask'
     assert_contains "$prompt" 'close #123'
     echo "PASS: $SCENARIO"
+}
+
+# The launcher delegates review decisions to the agent. Test the prompt
+# contract for each case, not a second implementation of the decision rules.
+assert_review_policy() {
+    assert_contains "$prompt" 'Pass the scope, ledger, round focus, and classification rules below to Standards, Spec, and Security'
+    assert_contains "$prompt" '/findings.md across rounds'
+    assert_contains "$prompt" 'In the first round inspect changed behavior and directly connected boundaries'
+    assert_contains "$prompt" 'In later rounds verify previous blockers and check fixes for regressions'
+    assert_contains "$prompt" 'file and line, practical impact, prerequisites, confidence, whether it exists on the baseline'
+
+    # Low-impact baseline issue: visible in the ledger, not a delivery blocker.
+    assert_contains "$prompt" 'Report every confirmed finding, even when it does not block delivery'
+    assert_contains "$prompt" 'Follow-up: a confirmed issue that does not block this patch (for example, a low-impact baseline issue)'
+    assert_absent "$prompt" 'no unresolved findings'
+
+    # Material regression: classified as a blocker and subject to the round gate.
+    assert_contains "$prompt" 'Blocker: an unmet acceptance criterion, a material defect introduced or worsened by the patch'
+    assert_contains "$prompt" 'only when all three reviews finish, verification passes, no delivery blockers remain, and the reviewed fingerprint is accepted'
+
+    # Unverified proxy behavior: report evidence needed, not a confirmed defect.
+    assert_contains "$prompt" 'Needs verification: a concern that depends on missing evidence (for example, production proxy behavior)'
+    assert_contains "$prompt" 'State exactly what evidence is needed and whether delivery depends on it'
+    assert_contains "$prompt" 'Do not report it as a confirmed production defect'
+    assert_contains "$prompt" 'Missing evidence blocks delivery only when needed to establish a promised control or resolve a potential blocker'
+    assert_absent "$prompt" 'reporting only confirmed vulnerabilities'
+
+    # Late follow-up: retain past findings, but do not restart review for it.
+    assert_contains "$prompt" 'Record any new finding under the same rules; retain earlier findings and update their status with evidence'
+    assert_contains "$prompt" 'Follow-ups do not fail a round or trigger another fix-and-review loop, even if first found in a later round'
+
+    # Reviewers have no authority to waive a blocker or expand scope.
+    assert_contains "$prompt" 'Only the user can accept a blocker or authorize expanded scope; record explicit decisions in the ledger'
 }
 
 run_failure() {
@@ -94,6 +127,7 @@ assert_contains "$suite/help.log" 'Usage: operare ISSUE \[--generic\] \[--ship\]
 
 setup pr
 run_success
+assert_review_policy
 [[ $(git branch --show-current) == fix/issue-123 ]] || fail 'Unexpected PR branch'
 assert_contains "$prompt" 'Open a PR in test/project with base main and head fix/issue-123'
 assert_contains "$prompt" 'Do not merge the PR or close the issue'
